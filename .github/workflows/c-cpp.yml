@@ -51,18 +51,21 @@ jobs:
           dkp-pacman -Sy --noconfirm --needed \
             wii-dev wii-sdl2 wii-opengx ppc-bzip2 ppc-freetype ppc-zlib
 
-      # DIAGNOSTIC: library_suffix's build.h does compile-time OS/arch detection
-      # and falls back to a bare "#error" for anything it doesn't recognize.
-      # devkitPPC/Wii isn't in FWGS's officially supported platform matrix, so
-      # this dumps the detection logic to figure out exactly which macro check
-      # is failing before we try to patch it.
-      - name: Dump library_suffix platform-detection header
+      # FIX: library_suffix's build.h does compile-time OS detection and falls
+      # back to a bare "#error" for anything it doesn't recognize. Wii/GEKKO
+      # isn't in FWGS's upstream platform list at all (confirmed via CI log:
+      # the #else/#error catch-all at the end of the OS #if/#elif chain is
+      # what's firing), so patch in a branch for it before configuring.
+      # devkitPro's CMake toolchain passes -DGEKKO at compile time even though
+      # it's not a built-in compiler macro.
+      - name: Patch library_suffix for Wii/GEKKO support
         working-directory: xash3d-fwgs
         run: |
-          echo "--- devkitPPC predefined macros (OS/arch related) ---"
-          "${DEVKITPPC}/bin/powerpc-eabi-gcc" -dM -E - < /dev/null | grep -iE 'wii|gekko|ppc|powerpc|eabi|linux|__unix|__ELF__'
-          echo "--- build.h (first 160 lines) ---"
-          nl -ba 3rdparty/library_suffix/include/build.h | sed -n '1,160p'
+          F=3rdparty/library_suffix/include/build.h
+          perl -pi -e 's/^(\s*)#undef XASH_WIN32$/$1#undef XASH_WII\n$1#undef XASH_WIN32/' "$F"
+          perl -pi -e 's/^(\s*)#define XASH_HURD 1$/$1#define XASH_HURD 1\n$1#elif defined GEKKO || defined __wii__ || defined __gamecube__\n$1\t#define XASH_WII 1/' "$F"
+          echo "--- patched section ---"
+          nl -ba "$F" | sed -n '95,155p'
 
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
