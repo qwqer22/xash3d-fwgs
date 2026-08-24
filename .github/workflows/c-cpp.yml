@@ -85,6 +85,17 @@ jobs:
         run: |
           cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake"
 
+      # DIAGNOSTIC: build.h now compiles fine (XASH_WII gets defined), but a
+      # second file in the same submodule, buildenums.h, hit its own #error
+      # catch-all at line 100 - it likely maps XASH_* platform macros to
+      # string/enum constants (e.g. Q_buildos()) via its own #elif chain that
+      # doesn't know about XASH_WII yet. Dump it so we can see the exact
+      # construct before patching (unlike build.h, we haven't seen this one).
+      - name: Dump buildenums.h platform-detection logic
+        working-directory: xash3d-fwgs
+        run: |
+          nl -ba 3rdparty/library_suffix/include/buildenums.h
+
       - name: Build
         working-directory: xash3d-fwgs
         run: make -C build -j"$(nproc)"
