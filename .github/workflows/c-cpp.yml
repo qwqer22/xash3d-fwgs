@@ -1,222 +1,80 @@
-name: Build Wii
+name: Build Wii Xash3D
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    container:
-      image: devkitpro/devkitppc:latest
-
-    env:
-      DEVKITPRO: /opt/devkitpro
-      DEVKITPPC: /opt/devkitpro/devkitPPC
-      PATH: /opt/devkitpro/devkitPPC/bin:/opt/devkitpro/tools/bin:/opt/devkitpro/portlibs/wii/bin:/opt/devkitpro/portlibs/ppc/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
     steps:
-      # ============================================================
-      # Checkout
-      # ============================================================
-
-      - name: Checkout Xash3D
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
-      # ============================================================
-      # Clone dependencies
-      # ============================================================
-
-      - name: Clone mainui_cpp
+      - name: Install dependencies
         run: |
-          git clone --recursive \
-            https://github.com/MintFerret/mainui_cpp.git \
-            mainui_cpp
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            build-essential \
+            libbz2-dev \
+            zlib1g-dev \
+            libfreetype6-dev
 
-      - name: Clone hlsdk-portable
+      - name: Install devkitPro
+        uses: devkitPro/gh-setup@v1
+
+      - name: Setup environment
+        shell: bash
         run: |
-          git clone --recursive \
-            https://github.com/MintFerret/hlsdk-portable.git \
-            hlsdk-portable
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITPPC=$DEVKITPPC"
 
-      # ============================================================
-      # Check toolchain
-      # ============================================================
+          echo "$DEVKITPPC/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/tools/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/portlibs/wii/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/portlibs/ppc/bin" >> $GITHUB_PATH
 
-      - name: Check devkitPPC
+      - name: Check toolchain
+        shell: bash
         run: |
-          echo "========================================"
-          echo "DEVKITPRO"
-          echo "$DEVKITPRO"
-          echo "========================================"
+          set -eux
 
-          echo "DEVKITPPC"
-          echo "$DEVKITPPC"
-          echo "========================================"
-
-          echo "GCC"
+          which powerpc-eabi-gcc
+          which powerpc-eabi-g++
           powerpc-eabi-gcc --version
 
-          echo "G++"
-          powerpc-eabi-g++ --version
+          which pkg-config
+          pkg-config --version
 
-          echo "CMake"
-          cmake --version
-
-          echo "Ninja"
-          ninja --version
-
-      # ============================================================
-      # Inspect dependencies
-      # ============================================================
-
-      - name: Inspect hlsdk-portable
+      - name: Configure
+        shell: bash
         run: |
-          echo "========================================"
-          echo "hlsdk-portable directory"
-          echo "========================================"
-
-          find hlsdk-portable \
-            -maxdepth 3 \
-            -type f \
-            | sort \
-            | head -300
-
-      - name: Inspect mainui_cpp
-        run: |
-          echo "========================================"
-          echo "mainui_cpp directory"
-          echo "========================================"
-
-          find mainui_cpp \
-            -maxdepth 3 \
-            -type f \
-            | sort \
-            | head -300
-
-      # ============================================================
-      # Check required files
-      # ============================================================
-
-      - name: Check required source files
-        run: |
-          echo "========================================"
-          echo "Searching required files"
-          echo "========================================"
-
-          echo ""
-          echo "ev_hldm.cpp:"
-          find . -name "ev_hldm.cpp" -print
-
-          echo ""
-          echo "agrunt.cpp:"
-          find . -name "agrunt.cpp" -print
-
-          echo ""
-          echo "link_helper.cpp:"
-          find . -name "link_helper.cpp" -print
-
-      # ============================================================
-      # Configure
-      # ============================================================
-
-      - name: Configure CMake
-        run: |
-          rm -rf build
-
-          cmake \
-            -S . \
-            -B build \
+          cmake -S . -B build \
             -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Wii.cmake" \
-            -DCMAKE_BUILD_TYPE=Release
-
-      # ============================================================
-      # Build
-      # ============================================================
+            -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build
+        shell: bash
         run: |
-          cmake \
-            --build build \
-            --parallel 2 \
-            --verbose
+          cmake --build build --parallel 2
 
-      # ============================================================
-      # Find output
-      # ============================================================
-
-      - name: Find build output
+      - name: Find output
+        shell: bash
         run: |
-          echo "========================================"
-          echo "Build output"
-          echo "========================================"
-
-          find build \
-            -type f \
-            \( \
-              -name "*.dol" \
-              -o -name "*.elf" \
-              -o -name "*.a" \
-            \) \
-            -print \
-            | sort
-
-      # ============================================================
-      # Prepare Wii application
-      # ============================================================
-
-      - name: Prepare Wii application
-        run: |
-          mkdir -p artifact/apps/xash3d
-
-          echo "Searching for DOL..."
-
-          DOL=$(find build \
-            -type f \
-            -name "*.dol" \
-            | head -n 1)
-
-          if [ -z "$DOL" ]; then
-            echo "ERROR: No .dol file was produced."
-            exit 1
-          fi
-
-          echo "Found:"
-          echo "$DOL"
-
-          cp "$DOL" artifact/apps/xash3d/boot.dol
-
-      # ============================================================
-      # Package
-      # ============================================================
-
-      - name: Create meta.xml
-        run: |
-          cat > artifact/apps/xash3d/meta.xml <<'EOF'
-          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-          <app version="1">
-            <name>Xash3D FWGS</name>
-            <coder>MintFerret</coder>
-            <version>Wii CI Build</version>
-            <release_date>2026</release_date>
-            <short_description>Xash3D FWGS for Nintendo Wii</short_description>
-            <long_description>Xash3D FWGS Wii build.</long_description>
-          </app>
-          EOF
-
-      # ============================================================
-      # Upload
-      # ============================================================
+          echo "========== BUILD OUTPUT =========="
+          find build -type f \( \
+            -name "*.dol" -o \
+            -name "*.elf" -o \
+            -name "xash" \
+          \) -print
 
       - name: Upload Wii build
         uses: actions/upload-artifact@v4
         with:
           name: xash3d-wii
-          path: artifact/
-          if-no-files-found: error
+          path: |
+            build/**/*.dol
+            build/**/*.elf
