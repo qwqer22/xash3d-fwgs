@@ -51,6 +51,19 @@ jobs:
           dkp-pacman -Sy --noconfirm --needed \
             wii-dev wii-sdl2 wii-opengx ppc-bzip2 ppc-freetype ppc-zlib
 
+      # DIAGNOSTIC: library_suffix's build.h does compile-time OS/arch detection
+      # and falls back to a bare "#error" for anything it doesn't recognize.
+      # devkitPPC/Wii isn't in FWGS's officially supported platform matrix, so
+      # this dumps the detection logic to figure out exactly which macro check
+      # is failing before we try to patch it.
+      - name: Dump library_suffix platform-detection header
+        working-directory: xash3d-fwgs
+        run: |
+          echo "--- devkitPPC predefined macros (OS/arch related) ---"
+          "${DEVKITPPC}/bin/powerpc-eabi-gcc" -dM -E - < /dev/null | grep -iE 'wii|gekko|ppc|powerpc|eabi|linux|__unix|__ELF__'
+          echo "--- build.h (first 160 lines) ---"
+          nl -ba 3rdparty/library_suffix/include/build.h | sed -n '1,160p'
+
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
