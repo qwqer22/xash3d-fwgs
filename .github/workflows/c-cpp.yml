@@ -12,47 +12,38 @@ jobs:
     container:
       image: devkitpro/devkitppc:latest
 
+    env:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITPPC: /opt/devkitpro/devkitPPC
+      PATH: /opt/devkitpro/devkitPPC/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
     steps:
-      - name: Checkout
+      - name: Checkout Xash3D
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup devkitPPC
+      - name: Clone dependencies
         run: |
-          export DEVKITPRO=/opt/devkitpro
-          export DEVKITPPC=/opt/devkitpro/devkitPPC
-          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+          git clone --recursive https://github.com/MintFerret/mainui_cpp.git mainui_cpp
+          git clone --recursive https://github.com/MintFerret/hlsdk-portable.git hlsdk-portable
 
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITPPC=$DEVKITPPC"
-          echo "PATH=$PATH"
-
+      - name: Verify dependencies
+        run: |
+          echo "===== Toolchain ====="
           "$DEVKITPPC/bin/powerpc-eabi-gcc" --version
-          cmake --version
 
-      - name: Install dependencies
-        run: |
-          export DEVKITPRO=/opt/devkitpro
-          export DEVKITPPC=/opt/devkitpro/devkitPPC
-          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+          echo "===== HLSDK ====="
+          test -f hlsdk-portable/cl_dll/ev_hldm.cpp
+          test -f hlsdk-portable/dlls/agrunt.cpp
 
-          dkp-pacman -Syu --noconfirm
+          echo "===== MainUI ====="
+          test -f mainui_cpp/link_helper.cpp
 
-          dkp-pacman -S --needed --noconfirm \
-            wii-dev \
-            wii-sdl2 \
-            wii-opengx \
-            ppc-bzip2 \
-            ppc-freetype \
-            ppc-zlib
+          echo "All dependencies OK."
 
       - name: Configure
         run: |
-          export DEVKITPRO=/opt/devkitpro
-          export DEVKITPPC=/opt/devkitpro/devkitPPC
-          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
-
           cmake \
             -S . \
             -B build \
@@ -62,14 +53,11 @@ jobs:
 
       - name: Build
         run: |
-          export DEVKITPRO=/opt/devkitpro
-          export DEVKITPPC=/opt/devkitpro/devkitPPC
-          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
-
           cmake --build build --parallel 2
 
       - name: Check output
         run: |
+          echo "===== Build output ====="
           find build -type f \
             \( -name "*.dol" -o -name "*.elf" \) \
             -print
