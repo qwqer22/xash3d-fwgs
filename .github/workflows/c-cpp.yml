@@ -77,24 +77,22 @@ jobs:
           F=3rdparty/library_suffix/include/build.h
           perl -pi -e 's/^(\s*)#undef XASH_WIN32$/$1#undef XASH_WII\n$1#undef XASH_WIN32/' "$F"
           perl -pi -e 's/^(\s*)#define XASH_HURD 1$/$1#define XASH_HURD 1\n$1#elif defined GEKKO || defined __wii__ || defined __gamecube__\n$1\t#define XASH_WII 1/' "$F"
-          echo "--- patched section ---"
+          echo "--- build.h patched section ---"
           nl -ba "$F" | sed -n '95,155p'
+
+          # buildenums.h maps each XASH_* platform macro from build.h to a
+          # PLATFORM_* integer enum via its own #elif chain + #error catch-all.
+          # It doesn't know about XASH_WII either, so give it a slot too.
+          F2=3rdparty/library_suffix/include/buildenums.h
+          perl -pi -e 's/^(\s*#define PLATFORM_PSP\s+18\s*)$/$1\n#define PLATFORM_WII        19/' "$F2"
+          perl -pi -e 's/^(\s*)#define XASH_PLATFORM PLATFORM_PSP$/$1#define XASH_PLATFORM PLATFORM_PSP\n#elif XASH_WII\n$1#define XASH_PLATFORM PLATFORM_WII/' "$F2"
+          echo "--- buildenums.h patched section ---"
+          nl -ba "$F2" | sed -n '55,105p'
 
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
           cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake"
-
-      # DIAGNOSTIC: build.h now compiles fine (XASH_WII gets defined), but a
-      # second file in the same submodule, buildenums.h, hit its own #error
-      # catch-all at line 100 - it likely maps XASH_* platform macros to
-      # string/enum constants (e.g. Q_buildos()) via its own #elif chain that
-      # doesn't know about XASH_WII yet. Dump it so we can see the exact
-      # construct before patching (unlike build.h, we haven't seen this one).
-      - name: Dump buildenums.h platform-detection logic
-        working-directory: xash3d-fwgs
-        run: |
-          nl -ba 3rdparty/library_suffix/include/buildenums.h
 
       - name: Build
         working-directory: xash3d-fwgs
