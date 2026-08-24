@@ -1,136 +1,82 @@
-name: Build Xash3D Wii
+name: Build (Wii)
 
 on:
   push:
+    branches: [ "**" ]
   pull_request:
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-wii:
+    name: Wii (devkitPPC)
     runs-on: ubuntu-latest
-
+    # Official devkitPro image: devkitPPC toolchain + CMake + pacman preinstalled.
     container:
       image: devkitpro/devkitppc:latest
-
+    env:
+      DEVKITPRO: /opt/devkitpro
+      DEVKITPPC: /opt/devkitpro/devkitPPC
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # NOTE: do NOT use actions/checkout's zip-download codepath (it's fine here since
+      # checkout uses git, but per upstream README: never grab a GitHub zip archive of
+      # this repo manually, it omits the sibling repos below).
+      - name: Checkout xash3d-fwgs (with submodules)
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          path: xash3d-fwgs
 
-      - name: Show toolchain
-        shell: bash
+      # The Wii port builds three sibling checkouts side by side:
+      #   xash3d-fwgs/  mainui_cpp/  hlsdk-portable/
+      # CMakeLists.txt / makelibrary.txt reference the latter two via ../mainui_cpp
+      # and ../hlsdk-portable, so they must sit next to this repo, not inside it.
+      - name: Checkout mainui_cpp (Wii fork)
+        uses: actions/checkout@v6
+        with:
+          repository: MintFerret/mainui_cpp
+          submodules: recursive
+          path: mainui_cpp
+
+      - name: Checkout hlsdk-portable (Wii fork)
+        uses: actions/checkout@v6
+        with:
+          repository: MintFerret/hlsdk-portable
+          submodules: recursive
+          path: hlsdk-portable
+
+      - name: Install devkitPro Wii portlibs
+        # Matches the packages listed in the Wii port's README.
         run: |
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITPPC=$DEVKITPPC"
-          powerpc-eabi-gcc --version
-          powerpc-eabi-g++ --version
-          cmake --version
-          make --version
+          dkp-pacman -Sy --noconfirm --needed \
+            wii-dev wii-sdl2 wii-opengx ppc-bzip2 ppc-freetype ppc-zlib
 
-      - name: Install dependencies
-        shell: bash
+      - name: Configure (CMake)
+        working-directory: xash3d-fwgs
         run: |
-          pacman -Sy --noconfirm \
-            git \
-            cmake \
-            make \
-            pkgconf \
-            python \
-            freetype2 \
-            sdl2 \
-            zlib \
-            bzip2 \
-            opus \
-            libogc
-
-      - name: Check devkitPro environment
-        shell: bash
-        run: |
-          echo "========================================"
-          echo "devkitPro"
-          echo "========================================"
-
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITPPC=$DEVKITPPC"
-
-          ls -la "$DEVKITPRO"
-          ls -la "$DEVKITPPC"
-
-          echo "========================================"
-          echo "Libraries"
-          echo "========================================"
-
-          find "$DEVKITPRO" \
-            -maxdepth 3 \
-            -type d \
-            | sort \
-            | head -200
-
-      - name: Check source tree
-        shell: bash
-        run: |
-          echo "========================================"
-          echo "Source tree"
-          echo "========================================"
-
-          find . \
-            -maxdepth 3 \
-            -type f \
-            | sort \
-            | head -500
-
-      - name: Configure
-        shell: bash
-        run: |
-          rm -rf build
-
-          cmake \
-            -S . \
-            -B build \
-            -G "Unix Makefiles" \
-            -DCMAKE_BUILD_TYPE=Release
+          cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake"
 
       - name: Build
-        shell: bash
+        working-directory: xash3d-fwgs
+        run: make -C build -j"$(nproc)"
+
+      - name: Locate build output
+        working-directory: xash3d-fwgs
+        run: find build -name '*.dol' -o -name '*.elf'
+
+      - name: Rename xash.dol to boot.dol
+        working-directory: xash3d-fwgs
         run: |
-          cmake --build build --parallel $(nproc)
+          DOL=$(find build -name 'xash.dol' | head -n1)
+          if [ -n "$DOL" ]; then
+            cp "$DOL" "$(dirname "$DOL")/boot.dol"
+          fi
 
-      - name: Find output
-        shell: bash
-        run: |
-          echo "========================================"
-          echo "Build output"
-          echo "========================================"
-
-          find build \
-            -type f \
-            \( \
-              -name "*.dol" \
-              -o -name "*.elf" \
-              -o -name "*.map" \
-            \) \
-            -print
-
-      - name: Package
-        shell: bash
-        run: |
-          mkdir -p release
-
-          find build \
-            -type f \
-            \( -name "*.dol" -o -name "*.elf" \) \
-            -exec cp {} release/ \;
-
-          cp -r valve release/ 2>/dev/null || true
-
-          echo "========================================"
-          echo "Release"
-          echo "========================================"
-
-          find release -type f -print
-
-      - name: Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xash3d-wii
-          path: release/
-          if-no-files-found: error
+          name: xash3d-fwgs-wii
+          path: |
+            xash3d-fwgs/build/**/*.dol
+            xash3d-fwgs/build/**/*.elf
+          if-no-files-found: warn
