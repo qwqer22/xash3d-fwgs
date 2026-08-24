@@ -282,7 +282,7 @@ static qboolean FS_DetermineRootDirectory( char *out, size_t size )
 	return false;
 #elif XASH_OGC
 	if (fatInitDefault()) {
-		Q_strncpy( out, "sd:/xash3d", size);
+		Q_strncpy( out, "usb:/xash3d", size);
 			return true;
 		}
 	Sys_Error( "couldn't find %s data directory", XASH_ENGINE_NAME );
