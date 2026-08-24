@@ -7,8 +7,10 @@ on:
 
 jobs:
   build:
-    name: Build Wii
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+
+    container:
+      image: devkitpro/devkitppc:latest
 
     steps:
       - name: Checkout
@@ -16,35 +18,25 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install basic dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            wget \
-            curl \
-            git \
-            cmake \
-            ninja-build \
-            pkg-config \
-            python3 \
-            python3-pip
-
-      - name: Install devkitPro
-        run: |
-          wget -qO- https://apt.devkitpro.org/install-devkitpro-pacman \
-            | sudo dkp-pacman -S -
-
-          sudo dkp-pacman -S --noconfirm \
-            devkitPPC \
-            wii-dev
-
-      - name: Check devkitPro
+      - name: Show toolchain
         run: |
           echo "DEVKITPRO=$DEVKITPRO"
           echo "DEVKITPPC=$DEVKITPPC"
 
-          $DEVKITPPC/bin/powerpc-eabi-gcc --version
-          test -f "$DEVKITPRO/cmake/Wii.cmake"
+          powerpc-eabi-gcc --version
+          cmake --version
+
+      - name: Install dependencies
+        run: |
+          dkp-pacman -Syu --noconfirm
+
+          dkp-pacman -S --needed --noconfirm \
+            wii-dev \
+            wii-sdl2 \
+            wii-opengx \
+            ppc-bzip2 \
+            ppc-freetype \
+            ppc-zlib
 
       - name: Configure
         run: |
@@ -59,34 +51,27 @@ jobs:
         run: |
           cmake --build build --parallel 2
 
-      - name: Find build output
+      - name: Check output
         run: |
-          echo "========== Build files =========="
-          find build -type f \( \
-            -name "*.dol" \
-            -o -name "*.elf" \
-            -o -name "*.map" \
-          \) -print
+          find build -type f \
+            \( -name "*.dol" -o -name "*.elf" \) \
+            -print
 
-      - name: Prepare artifact
+      - name: Prepare Wii application
         run: |
-          mkdir -p artifact
+          mkdir -p artifact/apps/xash3d
 
           DOL=$(find build -type f -name "xash.dol" | head -n 1)
 
           if [ -z "$DOL" ]; then
-            echo "ERROR: xash.dol was not found!"
+            echo "ERROR: xash.dol not found"
             exit 1
           fi
 
-          cp "$DOL" artifact/boot.dol
-
-          echo "========== Artifact =========="
-          ls -lh artifact/
+          cp "$DOL" artifact/apps/xash3d/boot.dol
 
       - name: Upload Wii build
         uses: actions/upload-artifact@v4
         with:
           name: xash3d-wii
           path: artifact/
-          
