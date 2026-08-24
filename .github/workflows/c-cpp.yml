@@ -104,6 +104,13 @@ jobs:
           echo "--- CMakeLists.txt: how platform/posix sources and socket code are gated ---"
           grep -n -B2 -A2 'platform/posix\|XASH_POSIX\|getaddrinfo\|WITH_SOCKETS\|HAVE_SOCKETS' CMakeLists.txt makelibrary.txt engine/common/net_ws.c 2>/dev/null | head -150
 
+          # DIAGNOSTIC: a third file in this submodule, library_suffix.h, has
+          # its own independent platform #if/#elif chain (builds a suffix
+          # string like "_linux_amd64" for shared libs) with its own #error
+          # catch-all - dump it so we can patch it precisely next round.
+          echo "--- library_suffix.h (full) ---"
+          nl -ba 3rdparty/library_suffix/include/library_suffix.h
+
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
