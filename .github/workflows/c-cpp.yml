@@ -89,3 +89,4 @@ jobs:
         with:
           name: xash3d-wii
           path: artifact/
+          
