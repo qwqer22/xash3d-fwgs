@@ -1,0 +1,80 @@
+name: Build Wii Xash3D
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            build-essential \
+            libbz2-dev \
+            zlib1g-dev \
+            libfreetype6-dev
+
+      - name: Install devkitPro
+        uses: devkitPro/gh-setup@v1
+
+      - name: Setup environment
+        shell: bash
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITPPC=$DEVKITPPC"
+
+          echo "$DEVKITPPC/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/tools/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/portlibs/wii/bin" >> $GITHUB_PATH
+          echo "$DEVKITPRO/portlibs/ppc/bin" >> $GITHUB_PATH
+
+      - name: Check toolchain
+        shell: bash
+        run: |
+          set -eux
+
+          which powerpc-eabi-gcc
+          which powerpc-eabi-g++
+          powerpc-eabi-gcc --version
+
+          which pkg-config
+          pkg-config --version
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --parallel 2
+
+      - name: Find output
+        shell: bash
+        run: |
+          echo "========== BUILD OUTPUT =========="
+          find build -type f \( \
+            -name "*.dol" -o \
+            -name "*.elf" -o \
+            -name "xash" \
+          \) -print
+
+      - name: Upload Wii build
+        uses: actions/upload-artifact@v4
+        with:
+          name: xash3d-wii
+          path: |
+            build/**/*.dol
+            build/**/*.elf
