@@ -1,17 +1,26 @@
-name: Build Wii Xash3D
+name: Build Xash3D Wii
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  build-wii:
     runs-on: ubuntu-latest
 
     steps:
+      # ========================================
+      # Checkout
+      # ========================================
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      # ========================================
+      # Basic host dependencies
+      # ========================================
+      - name: Install host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -19,62 +28,209 @@ jobs:
             ninja-build \
             pkg-config \
             build-essential \
-            libbz2-dev \
-            zlib1g-dev \
-            libfreetype6-dev
+            bzip2 \
+            zlib1g-dev
 
-      - name: Install devkitPro
+      # ========================================
+      # Install devkitPro
+      # ========================================
+      - name: Setup devkitPro
         uses: devkitPro/gh-setup@v1
 
-      - name: Setup environment
-        shell: bash
-        run: |
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITPPC=$DEVKITPPC"
-
-          echo "$DEVKITPPC/bin" >> $GITHUB_PATH
-          echo "$DEVKITPRO/tools/bin" >> $GITHUB_PATH
-          echo "$DEVKITPRO/portlibs/wii/bin" >> $GITHUB_PATH
-          echo "$DEVKITPRO/portlibs/ppc/bin" >> $GITHUB_PATH
-
-      - name: Check toolchain
+      # ========================================
+      # Install Wii development packages
+      # ========================================
+      - name: Install Wii packages
         shell: bash
         run: |
           set -eux
 
+          sudo dkp-pacman -Syu --noconfirm
+
+          sudo dkp-pacman -S --needed --noconfirm \
+            wii-dev
+
+      # ========================================
+      # Environment
+      # ========================================
+      - name: Setup devkitPro environment
+        shell: bash
+        run: |
+          set -eux
+
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITPPC=$DEVKITPPC"
+
+          echo "$DEVKITPPC/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITPRO/tools/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITPRO/portlibs/wii/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITPRO/portlibs/ppc/bin" >> "$GITHUB_PATH"
+
+      # ========================================
+      # Check toolchain
+      # ========================================
+      - name: Check Wii toolchain
+        shell: bash
+        run: |
+          set -eux
+
+          echo "========================================"
+          echo "DEVKITPRO"
+          echo "========================================"
+          echo "$DEVKITPRO"
+
+          echo "========================================"
+          echo "DEVKITPPC"
+          echo "========================================"
+          echo "$DEVKITPPC"
+
+          echo "========================================"
+          echo "Compiler"
+          echo "========================================"
+
           which powerpc-eabi-gcc
           which powerpc-eabi-g++
+
           powerpc-eabi-gcc --version
+          powerpc-eabi-g++ --version
+
+          echo "========================================"
+          echo "CMake"
+          echo "========================================"
+
+          cmake --version
+
+          echo "========================================"
+          echo "pkg-config"
+          echo "========================================"
 
           which pkg-config
           pkg-config --version
 
-      - name: Configure
+      # ========================================
+      # Inspect devkitPro
+      # ========================================
+      - name: Inspect Wii environment
         shell: bash
         run: |
-          cmake -S . -B build \
+          set +e
+
+          echo "========================================"
+          echo "devkitPPC"
+          echo "========================================"
+
+          ls -la "$DEVKITPPC/bin" | head -50
+
+          echo "========================================"
+          echo "Wii portlibs"
+          echo "========================================"
+
+          find "$DEVKITPRO/portlibs/wii" \
+            -maxdepth 2 \
+            -type f \
+            | sort \
+            | head -200
+
+          echo "========================================"
+          echo "pkg-config paths"
+          echo "========================================"
+
+          pkg-config --variable pc_path pkg-config || true
+
+          echo "========================================"
+          echo "SDL2"
+          echo "========================================"
+
+          pkg-config --modversion sdl2 || true
+          pkg-config --cflags sdl2 || true
+          pkg-config --libs sdl2 || true
+
+          echo "========================================"
+          echo "zlib"
+          echo "========================================"
+
+          pkg-config --modversion zlib || true
+          pkg-config --cflags zlib || true
+          pkg-config --libs zlib || true
+
+      # ========================================
+      # Configure
+      # ========================================
+      - name: Configure CMake
+        shell: bash
+        run: |
+          set -eux
+
+          rm -rf build
+
+          cmake \
+            -S . \
+            -B build \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Build
+      # ========================================
+      # Build
+      # ========================================
+      - name: Build Xash3D
         shell: bash
         run: |
-          cmake --build build --parallel 2
+          set -eux
 
-      - name: Find output
+          cmake \
+            --build build \
+            --parallel 2 \
+            --verbose
+
+      # ========================================
+      # Locate output
+      # ========================================
+      - name: Locate build output
         shell: bash
         run: |
-          echo "========== BUILD OUTPUT =========="
-          find build -type f \( \
-            -name "*.dol" -o \
-            -name "*.elf" -o \
-            -name "xash" \
-          \) -print
+          echo "========================================"
+          echo "DOL / ELF output"
+          echo "========================================"
 
+          find build \
+            -type f \
+            \( \
+              -name "*.dol" \
+              -o -name "*.elf" \
+              -o -name "xash" \
+            \) \
+            -print
+
+      # ========================================
+      # Package
+      # ========================================
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -eux
+
+          mkdir -p artifact
+
+          find build \
+            -type f \
+            \( \
+              -name "*.dol" \
+              -o -name "*.elf" \
+            \) \
+            -exec cp {} artifact/ \;
+
+          echo "========================================"
+          echo "Artifact"
+          echo "========================================"
+
+          ls -lah artifact
+
+      # ========================================
+      # Upload
+      # ========================================
       - name: Upload Wii build
         uses: actions/upload-artifact@v4
         with:
           name: xash3d-wii
-          path: |
-            build/**/*.dol
-            build/**/*.elf
+          path: artifact/
+          if-no-files-found: error
