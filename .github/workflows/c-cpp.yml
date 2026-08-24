@@ -46,10 +46,23 @@ jobs:
           path: hlsdk-portable
 
       - name: Install devkitPro Wii portlibs
-        # Matches the packages listed in the Wii port's README.
+        # NOTE: intentionally no "-Sy" here. devkitpro/devkitppc:latest already
+        # installs wii-dev + wii-portlibs + ppc-portlibs at image build time
+        # (see https://github.com/devkitPro/docker/blob/master/devkitppc/Dockerfile),
+        # which covers everything the Wii README asks for. Forcing a database
+        # sync ("-Sy") makes an unnecessary network call to pkg.devkitpro.org,
+        # which intermittently 403s shared CI IP ranges
+        # (see https://github.com/devkitPro/pacman/issues/63 - unresolved,
+        # server-side). Without "-Sy", "--needed" just checks the local DB
+        # already baked into the image and no-ops if everything's present,
+        # so this step doesn't hit the network at all in the common case.
         run: |
-          dkp-pacman -Sy --noconfirm --needed \
-            wii-dev wii-sdl2 wii-opengx ppc-bzip2 ppc-freetype ppc-zlib
+          for i in 1 2 3 4 5; do
+            dkp-pacman -S --needed --noconfirm \
+              wii-dev wii-sdl2 wii-opengx ppc-bzip2 ppc-freetype ppc-zlib && break
+            echo "pacman attempt $i failed, retrying in 15s..."
+            sleep 15
+          done
 
       # FIX: library_suffix's build.h does compile-time OS detection and falls
       # back to a bare "#error" for anything it doesn't recognize. Wii/GEKKO
