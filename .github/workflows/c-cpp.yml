@@ -18,16 +18,25 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Show toolchain
+      - name: Setup devkitPPC
         run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=/opt/devkitpro/devkitPPC
+          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+
           echo "DEVKITPRO=$DEVKITPRO"
           echo "DEVKITPPC=$DEVKITPPC"
+          echo "PATH=$PATH"
 
-          powerpc-eabi-gcc --version
+          "$DEVKITPPC/bin/powerpc-eabi-gcc" --version
           cmake --version
 
       - name: Install dependencies
         run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=/opt/devkitpro/devkitPPC
+          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+
           dkp-pacman -Syu --noconfirm
 
           dkp-pacman -S --needed --noconfirm \
@@ -40,6 +49,10 @@ jobs:
 
       - name: Configure
         run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=/opt/devkitpro/devkitPPC
+          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+
           cmake \
             -S . \
             -B build \
@@ -49,6 +62,10 @@ jobs:
 
       - name: Build
         run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=/opt/devkitpro/devkitPPC
+          export PATH="$DEVKITPPC/bin:$DEVKITPRO/tools/bin:$PATH"
+
           cmake --build build --parallel 2
 
       - name: Check output
