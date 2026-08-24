@@ -76,9 +76,18 @@ jobs:
         run: |
           F=3rdparty/library_suffix/include/build.h
           perl -pi -e 's/^(\s*)#undef XASH_WIN32$/$1#undef XASH_WII\n$1#undef XASH_WIN32/' "$F"
-          perl -pi -e 's/^(\s*)#define XASH_HURD 1$/$1#define XASH_HURD 1\n$1#elif defined GEKKO || defined __wii__ || defined __gamecube__\n$1\t#define XASH_WII 1/' "$F"
-          echo "--- build.h patched section ---"
-          nl -ba "$F" | sed -n '95,155p'
+          # IMPORTANT: Wii/GEKKO must be a TOP-LEVEL branch, like __psp__ already
+          # is, NOT nested inside the "#else // POSIX compatible" block (which
+          # sets XASH_POSIX 1). libogc/newlib on Wii has no select()/getaddrinfo()/
+          # execv()/getpwuid() etc., so tagging it XASH_POSIX makes CMakeLists.txt
+          # pull in engine/platform/posix/*.c alongside the real engine/platform/ogc/*.c
+          # files, causing duplicate-symbol link errors (e.g. Platform_ShellExecute
+          # defined in both) and unresolved POSIX socket/user syscalls.
+          perl -0777 -pi -e 's/(#elif defined __psp__\n(?:.*\n)*?\t#define XASH_PSP 1\n)/$1#elif defined GEKKO || defined __wii__ || defined __gamecube__\n\t#define XASH_WII 1\n/' "$F"
+          echo "--- build.h patched section (top-level OS chain) ---"
+          nl -ba "$F" | sed -n '1,60p'
+          echo "--- build.h patched section (POSIX sub-chain, should NOT contain XASH_WII) ---"
+          nl -ba "$F" | sed -n '95,160p'
 
           # buildenums.h maps each XASH_* platform macro from build.h to a
           # PLATFORM_* integer enum via its own #elif chain + #error catch-all.
@@ -88,6 +97,12 @@ jobs:
           perl -pi -e 's/^(\s*)#define XASH_PLATFORM PLATFORM_PSP$/$1#define XASH_PLATFORM PLATFORM_PSP\n#elif XASH_WII\n$1#define XASH_PLATFORM PLATFORM_WII/' "$F2"
           echo "--- buildenums.h patched section ---"
           nl -ba "$F2" | sed -n '55,105p'
+
+          # DIAGNOSTIC: figure out exactly what gates engine/platform/posix/*.c
+          # and the POSIX-socket code paths, so if removing XASH_POSIX from Wii
+          # doesn't fully fix the link, we know precisely what else to patch.
+          echo "--- CMakeLists.txt: how platform/posix sources and socket code are gated ---"
+          grep -n -B2 -A2 'platform/posix\|XASH_POSIX\|getaddrinfo\|WITH_SOCKETS\|HAVE_SOCKETS' CMakeLists.txt makelibrary.txt engine/common/net_ws.c 2>/dev/null | head -150
 
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
