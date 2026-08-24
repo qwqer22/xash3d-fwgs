@@ -15,35 +15,120 @@ jobs:
     env:
       DEVKITPRO: /opt/devkitpro
       DEVKITPPC: /opt/devkitpro/devkitPPC
-      PATH: /opt/devkitpro/devkitPPC/bin:/opt/devkitpro/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      PATH: /opt/devkitpro/devkitPPC/bin:/opt/devkitpro/tools/bin:/opt/devkitpro/portlibs/wii/bin:/opt/devkitpro/portlibs/ppc/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     steps:
+      # ============================================================
+      # Checkout
+      # ============================================================
+
       - name: Checkout Xash3D
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      - name: Clone dependencies
+      # ============================================================
+      # Clone dependencies
+      # ============================================================
+
+      - name: Clone mainui_cpp
         run: |
-          git clone --recursive https://github.com/MintFerret/mainui_cpp.git mainui_cpp
-          git clone --recursive https://github.com/MintFerret/hlsdk-portable.git hlsdk-portable
+          git clone --recursive \
+            https://github.com/MintFerret/mainui_cpp.git \
+            mainui_cpp
 
-      - name: Verify dependencies
+      - name: Clone hlsdk-portable
         run: |
-          echo "===== Toolchain ====="
-          "$DEVKITPPC/bin/powerpc-eabi-gcc" --version
+          git clone --recursive \
+            https://github.com/MintFerret/hlsdk-portable.git \
+            hlsdk-portable
 
-          echo "===== HLSDK ====="
-          test -f hlsdk-portable/cl_dll/ev_hldm.cpp
-          test -f hlsdk-portable/dlls/agrunt.cpp
+      # ============================================================
+      # Check toolchain
+      # ============================================================
 
-          echo "===== MainUI ====="
-          test -f mainui_cpp/link_helper.cpp
-
-          echo "All dependencies OK."
-
-      - name: Configure
+      - name: Check devkitPPC
         run: |
+          echo "========================================"
+          echo "DEVKITPRO"
+          echo "$DEVKITPRO"
+          echo "========================================"
+
+          echo "DEVKITPPC"
+          echo "$DEVKITPPC"
+          echo "========================================"
+
+          echo "GCC"
+          powerpc-eabi-gcc --version
+
+          echo "G++"
+          powerpc-eabi-g++ --version
+
+          echo "CMake"
+          cmake --version
+
+          echo "Ninja"
+          ninja --version
+
+      # ============================================================
+      # Inspect dependencies
+      # ============================================================
+
+      - name: Inspect hlsdk-portable
+        run: |
+          echo "========================================"
+          echo "hlsdk-portable directory"
+          echo "========================================"
+
+          find hlsdk-portable \
+            -maxdepth 3 \
+            -type f \
+            | sort \
+            | head -300
+
+      - name: Inspect mainui_cpp
+        run: |
+          echo "========================================"
+          echo "mainui_cpp directory"
+          echo "========================================"
+
+          find mainui_cpp \
+            -maxdepth 3 \
+            -type f \
+            | sort \
+            | head -300
+
+      # ============================================================
+      # Check required files
+      # ============================================================
+
+      - name: Check required source files
+        run: |
+          echo "========================================"
+          echo "Searching required files"
+          echo "========================================"
+
+          echo ""
+          echo "ev_hldm.cpp:"
+          find . -name "ev_hldm.cpp" -print
+
+          echo ""
+          echo "agrunt.cpp:"
+          find . -name "agrunt.cpp" -print
+
+          echo ""
+          echo "link_helper.cpp:"
+          find . -name "link_helper.cpp" -print
+
+      # ============================================================
+      # Configure
+      # ============================================================
+
+      - name: Configure CMake
+        run: |
+          rm -rf build
+
           cmake \
             -S . \
             -B build \
@@ -51,32 +136,87 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$DEVKITPRO/cmake/Wii.cmake" \
             -DCMAKE_BUILD_TYPE=Release
 
+      # ============================================================
+      # Build
+      # ============================================================
+
       - name: Build
         run: |
-          cmake --build build --parallel 2
+          cmake \
+            --build build \
+            --parallel 2 \
+            --verbose
 
-      - name: Check output
+      # ============================================================
+      # Find output
+      # ============================================================
+
+      - name: Find build output
         run: |
-          echo "===== Build output ====="
-          find build -type f \
-            \( -name "*.dol" -o -name "*.elf" \) \
-            -print
+          echo "========================================"
+          echo "Build output"
+          echo "========================================"
+
+          find build \
+            -type f \
+            \( \
+              -name "*.dol" \
+              -o -name "*.elf" \
+              -o -name "*.a" \
+            \) \
+            -print \
+            | sort
+
+      # ============================================================
+      # Prepare Wii application
+      # ============================================================
 
       - name: Prepare Wii application
         run: |
           mkdir -p artifact/apps/xash3d
 
-          DOL=$(find build -type f -name "xash.dol" | head -n 1)
+          echo "Searching for DOL..."
+
+          DOL=$(find build \
+            -type f \
+            -name "*.dol" \
+            | head -n 1)
 
           if [ -z "$DOL" ]; then
-            echo "ERROR: xash.dol not found"
+            echo "ERROR: No .dol file was produced."
             exit 1
           fi
 
+          echo "Found:"
+          echo "$DOL"
+
           cp "$DOL" artifact/apps/xash3d/boot.dol
+
+      # ============================================================
+      # Package
+      # ============================================================
+
+      - name: Create meta.xml
+        run: |
+          cat > artifact/apps/xash3d/meta.xml <<'EOF'
+          <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+          <app version="1">
+            <name>Xash3D FWGS</name>
+            <coder>MintFerret</coder>
+            <version>Wii CI Build</version>
+            <release_date>2026</release_date>
+            <short_description>Xash3D FWGS for Nintendo Wii</short_description>
+            <long_description>Xash3D FWGS Wii build.</long_description>
+          </app>
+          EOF
+
+      # ============================================================
+      # Upload
+      # ============================================================
 
       - name: Upload Wii build
         uses: actions/upload-artifact@v4
         with:
           name: xash3d-wii
           path: artifact/
+          if-no-files-found: error
