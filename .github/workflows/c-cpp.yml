@@ -160,6 +160,15 @@ jobs:
           echo "--- CMakeLists.txt: xash link options after patch ---"
           grep -n -A6 'target_link_options(xash' CMakeLists.txt
 
+          # DIAGNOSTIC: build now gets all the way to a single remaining error -
+          # OS_LIB_PREFIX undeclared in engine/client/dll_int/cl_gameui.c. This
+          # symbol never showed up in the library_suffix.h dump, so it's likely
+          # defined per-platform elsewhere (a CMake target_compile_definitions,
+          # e.g. -DOS_LIB_PREFIX=\"lib\" on Android, empty elsewhere) and Wii
+          # was never given one. Find where it's set for other platforms.
+          echo "--- searching for OS_LIB_PREFIX definition across the repo ---"
+          grep -rn "OS_LIB_PREFIX" --include=*.txt --include=*.c --include=*.h --include=*.cmake . 2>/dev/null | head -40
+
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
