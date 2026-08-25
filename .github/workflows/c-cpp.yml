@@ -104,8 +104,16 @@ jobs:
           # linked into one .dol) - it still needs to compile.
           F3=3rdparty/library_suffix/include/library_suffix.h
           perl -pi -e 's/^(\s*)#define OS_LIB_EXT "prx"$/$1#define OS_LIB_EXT "prx"\n#elif XASH_WII\n$1#define OS_LIB_EXT "dol"/' "$F3"
+          # OS_LIB_PREFIX (used by engine/client/dll_int/ref_common.c and
+          # cl_gameui.c to build shared-lib filenames like "libref_gl.so" on
+          # Android) is used throughout the engine but was never actually
+          # defined anywhere in this repo for ANY platform - confirmed via a
+          # repo-wide grep that found zero definitions, only the two usages.
+          # Add it here alongside OS_LIB_EXT so every platform gets a real
+          # value instead of relying on it happening to go unused.
+          perl -0777 -pi -e 's/(#endif\n\n#ifdef __cplusplus)/#if XASH_ANDROID\n\t#define OS_LIB_PREFIX "lib"\n#else\n\t#define OS_LIB_PREFIX ""\n#endif\n\n$1/' "$F3"
           echo "--- library_suffix.h patched section ---"
-          nl -ba "$F3" | sed -n '33,50p'
+          nl -ba "$F3" | sed -n '33,58p'
 
           # DIAGNOSTIC: figure out exactly what gates engine/platform/posix/*.c
           # and the POSIX-socket code paths, so if removing XASH_POSIX from Wii
@@ -159,15 +167,6 @@ jobs:
           perl -0777 -pi -e 's/(target_link_options\(xash PUBLIC\n)/$1\t-Wl,--allow-multiple-definition\n/' CMakeLists.txt
           echo "--- CMakeLists.txt: xash link options after patch ---"
           grep -n -A6 'target_link_options(xash' CMakeLists.txt
-
-          # DIAGNOSTIC: build now gets all the way to a single remaining error -
-          # OS_LIB_PREFIX undeclared in engine/client/dll_int/cl_gameui.c. This
-          # symbol never showed up in the library_suffix.h dump, so it's likely
-          # defined per-platform elsewhere (a CMake target_compile_definitions,
-          # e.g. -DOS_LIB_PREFIX=\"lib\" on Android, empty elsewhere) and Wii
-          # was never given one. Find where it's set for other platforms.
-          echo "--- searching for OS_LIB_PREFIX definition across the repo ---"
-          grep -rn "OS_LIB_PREFIX" --include=*.txt --include=*.c --include=*.h --include=*.cmake . 2>/dev/null | head -40
 
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
