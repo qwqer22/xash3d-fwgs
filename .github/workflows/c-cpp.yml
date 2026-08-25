@@ -120,10 +120,38 @@ jobs:
           echo "--- CMakeLists.txt lines 90-145 (source globbing / add_executable) ---"
           nl -ba CMakeLists.txt | sed -n '90,145p'
 
+          # FIX: confirmed via the dump above - engine/platform/posix/* is
+          # globbed in completely unconditionally alongside engine/platform/ogc/*,
+          # with sys_posix.c even added a second time explicitly. This is a
+          # leftover from the CMakeLists.txt not being platform-gated (this repo
+          # only ever targets Wii, so it looks like a copy/paste that was never
+          # cleaned up). Remove both so only the real Wii implementations
+          # (engine/platform/ogc/*.c) get built - this eliminates the
+          # "multiple definition of Platform_ShellExecute" class of errors.
+          perl -ni -e 'print unless /^\s*engine\/platform\/posix\/\*\s*$/' CMakeLists.txt
+          perl -ni -e 'print unless /^engine\/platform\/posix\/sys_posix\.c\s*$/' CMakeLists.txt
+          echo "--- CMakeLists.txt lines 90-145 after removing platform/posix ---"
+          nl -ba CMakeLists.txt | sed -n '90,145p'
+
+          # FIX: the rest of the "multiple definition" errors (e.g. _Mem_Alloc,
+          # FS_Open, TriRenderMode, R_Init) are NOT platform-related - they're
+          # because filesystem_stdio/cl_dll/hl/menu/ref_soft are each designed
+          # to be independent shared libraries that carry their own private
+          # copy of shared utility code (normal for this engine's split-DLL
+          # architecture). Wii has no dlopen, so CMakeLists.txt statically
+          # links everything into one binary, and those private copies collide.
+          # --allow-multiple-definition tells the linker to just take the
+          # first definition it sees instead of erroring - the standard,
+          # widely-used workaround for exactly this situation on statically-
+          # linked embedded/console ports.
+          echo "--- CMakeLists.txt: current xash link flags (to see where to add allow-multiple-definition) ---"
+          grep -n -A15 'target_link_libraries(xash\|target_link_options(xash' CMakeLists.txt
+
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
-          cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake"
+          cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake" \
+            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-multiple-definition"
 
       - name: Build
         working-directory: xash3d-fwgs
