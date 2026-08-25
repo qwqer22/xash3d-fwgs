@@ -98,18 +98,27 @@ jobs:
           echo "--- buildenums.h patched section ---"
           nl -ba "$F2" | sed -n '55,105p'
 
+          # library_suffix.h picks a dynamic-library file extension per platform
+          # (.so/.dll/.prx) with its own #error catch-all. Doesn't matter that
+          # Wii never actually loads dynamic libs (everything's statically
+          # linked into one .dol) - it still needs to compile.
+          F3=3rdparty/library_suffix/include/library_suffix.h
+          perl -pi -e 's/^(\s*)#define OS_LIB_EXT "prx"$/$1#define OS_LIB_EXT "prx"\n#elif XASH_WII\n$1#define OS_LIB_EXT "dol"/' "$F3"
+          echo "--- library_suffix.h patched section ---"
+          nl -ba "$F3" | sed -n '33,50p'
+
           # DIAGNOSTIC: figure out exactly what gates engine/platform/posix/*.c
           # and the POSIX-socket code paths, so if removing XASH_POSIX from Wii
           # doesn't fully fix the link, we know precisely what else to patch.
           echo "--- CMakeLists.txt: how platform/posix sources and socket code are gated ---"
           grep -n -B2 -A2 'platform/posix\|XASH_POSIX\|getaddrinfo\|WITH_SOCKETS\|HAVE_SOCKETS' CMakeLists.txt makelibrary.txt engine/common/net_ws.c 2>/dev/null | head -150
 
-          # DIAGNOSTIC: a third file in this submodule, library_suffix.h, has
-          # its own independent platform #if/#elif chain (builds a suffix
-          # string like "_linux_amd64" for shared libs) with its own #error
-          # catch-all - dump it so we can patch it precisely next round.
-          echo "--- library_suffix.h (full) ---"
-          nl -ba 3rdparty/library_suffix/include/library_suffix.h
+          # DIAGNOSTIC: broader context around the two spots that reference
+          # engine/platform/posix, to see if there's ANY platform guard around
+          # them or if they're unconditional (would explain the duplicate-symbol
+          # link errors against engine/platform/ogc/*.c).
+          echo "--- CMakeLists.txt lines 90-145 (source globbing / add_executable) ---"
+          nl -ba CMakeLists.txt | sed -n '90,145p'
 
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
