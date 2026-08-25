@@ -147,11 +147,23 @@ jobs:
           echo "--- CMakeLists.txt: current xash link flags (to see where to add allow-multiple-definition) ---"
           grep -n -A15 'target_link_libraries(xash\|target_link_options(xash' CMakeLists.txt
 
+          # Add --allow-multiple-definition INSIDE the existing per-target
+          # target_link_options(xash PUBLIC ...) block instead of via the
+          # global CMAKE_EXE_LINKER_FLAGS cache variable. Setting that variable
+          # via "-D" on the cmake command line *overwrites* (doesn't append to)
+          # whatever Wii.cmake's toolchain file sets there - including the
+          # -L search paths for libogc/libwiiuse/libbte - which broke even
+          # CMake's own "can the compiler link a trivial program" self-test.
+          # Appending inside target_link_options only adds to what's already
+          # there, so the toolchain's own flags stay intact.
+          perl -0777 -pi -e 's/(target_link_options\(xash PUBLIC\n)/$1\t-Wl,--allow-multiple-definition\n/' CMakeLists.txt
+          echo "--- CMakeLists.txt: xash link options after patch ---"
+          grep -n -A6 'target_link_options(xash' CMakeLists.txt
+
       - name: Configure (CMake)
         working-directory: xash3d-fwgs
         run: |
-          cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake" \
-            -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-multiple-definition"
+          cmake -S. -Bbuild -DCMAKE_TOOLCHAIN_FILE="${DEVKITPRO}/cmake/Wii.cmake"
 
       - name: Build
         working-directory: xash3d-fwgs
