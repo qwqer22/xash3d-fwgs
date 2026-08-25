@@ -109,11 +109,14 @@ jobs:
           # Android) is used throughout the engine but was never actually
           # defined anywhere in this repo for ANY platform - confirmed via a
           # repo-wide grep that found zero definitions, only the two usages.
-          # Add it here alongside OS_LIB_EXT so every platform gets a real
-          # value instead of relying on it happening to go unused.
-          perl -0777 -pi -e 's/(#endif\n\n#ifdef __cplusplus)/#if XASH_ANDROID\n\t#define OS_LIB_PREFIX "lib"\n#else\n\t#define OS_LIB_PREFIX ""\n#endif\n\n$1/' "$F3"
+          # Insert as its own standalone #if block right after the includes,
+          # NOT anchored to the OS_LIB_EXT chain's #endif - an earlier attempt
+          # anchored there and the new block ended up nested inside OS_LIB_EXT's
+          # untaken #else/#error branch, so it silently never got defined for
+          # ANY platform (preprocessor skips untaken branches entirely).
+          perl -0777 -pi -e 's/(#include "buildenums\.h"\n)/$1\n#if XASH_ANDROID\n\t#define OS_LIB_PREFIX "lib"\n#else\n\t#define OS_LIB_PREFIX ""\n#endif\n/' "$F3"
           echo "--- library_suffix.h patched section ---"
-          nl -ba "$F3" | sed -n '33,58p'
+          nl -ba "$F3" | sed -n '33,60p'
 
           # DIAGNOSTIC: figure out exactly what gates engine/platform/posix/*.c
           # and the POSIX-socket code paths, so if removing XASH_POSIX from Wii
